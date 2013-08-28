@@ -3,6 +3,7 @@
 import argparse
 import boto
 import logging
+import os
 import random
 import re
 import requests
@@ -11,12 +12,22 @@ import sys
 import tempfile
 import time
 
-from config import config
+from ConfigParser import ConfigParser
 from ipaddress import AddressValueError, IPv4Address, IPv4Network
 from kazoo.client import KazooClient
 from kazoo.exceptions import NodeExistsError, NoNodeError, ZookeeperError
 from kazoo.recipe.party import ShallowParty
 
+config = ConfigParser()
+if os.path.exists("/etc/neti/neti.conf"):
+    config_file = "/etc/neti/neti.conf"
+elif os.path.exists("testing.conf"):  # Assumes testing
+    config_file = "testing.conf"
+else:
+    print "Could not load config file in /etc/neti/neti.conf or testing.conf"
+    sys.exit(1)
+
+config.read(config_file)
 logger = logging.getLogger('neti')
 LOG_FILE = config.get("neti", "log_file")
 hdlr = logging.FileHandler(LOG_FILE)
@@ -32,7 +43,6 @@ PUBLIC_ADDRESS_PATH = "public-ipv4"
 PRIVATE_ADDRESS_PATH = "local-ipv4"
 MAC_PATH = "mac"
 VPCID_PATH = "network/interfaces/macs/%s/vpc-id"
-
 
 class Connection(object):
 

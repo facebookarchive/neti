@@ -1,7 +1,6 @@
 import neti
 import unittest
 
-from config import config
 from ipaddress import IPv4Address, IPv4Network
 from mock import Mock, patch
 
@@ -124,12 +123,12 @@ class NetiIPtablesTests(NetiTestBase):
             self.assertIn(ip, self.tempfile)
 
     def test_reject_all(self):
-        reject_all = config.getboolean("neti", "reject_all")
+        reject_all = neti.config.getboolean("neti", "reject_all")
         self.build_file()
         self.assertEquals(reject_all, "-j DROP" in self.tempfile)
 
     def test_open_80(self):
-        open_80 = config.getboolean("neti", "open_80")
+        open_80 = neti.config.getboolean("neti", "open_80")
         self.build_file()
         self.assertEquals(open_80, "dport 80" in self.tempfile)
 
