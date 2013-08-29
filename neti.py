@@ -149,7 +149,7 @@ class Registry(object):
             retries += 1
             try:
                 self.conn.local_zk.create(self._zk_id_path, ip)
-                logger.error("Creating %s" % id)
+                logger.info("Creating %s" % ip)
             except NoNodeError:
                 self.conn.local_zk.ensure_path(self.zk_idtoip_path)
                 logger.error("Path %s did not exist...creating and trying again" % self.zk_idtoip_path)
@@ -215,7 +215,6 @@ class Registry(object):
 
             @self.conn.local_zk.ChildrenWatch(self.zk_ip_map_path)
             def update_iptables(hosts):
-                logger.info(hosts)
                 builder = IPtables(is_vpc=self.conn._is_vpc, dry_run=self.dry_run)
                 builder.build(hosts)
 
@@ -354,7 +353,7 @@ class IPtables(object):
             temp.write(str(FilterRule("ec2_whitelist", bundle.filter_ip(self._is_vpc))))
         if len(self.ssh_whitelist) > 0:
             for ip in self.ssh_whitelist:
-                temp.write(str(FilterRule("ssh_whitelist", ip)))
+                temp.write(str(FilterRule("ssh_whitelist", ip, dest_port=22)))
         if self._is_vpc:
             temp.write(str(FilterRule("ssh_whitelist", "10.0.0.0/8")))
         temp.write("COMMIT\n")
@@ -391,11 +390,14 @@ class FilterRule(object):
 
     CHAINS = ["OUTPUT", "INPUT", "PREROUTING", "POSTROUTING", "ssh_whitelist", "ec2_whitelist"]
 
-    def __init__(self, chain, source_ip):
+    def __init__(self, chain, source_ip, dest_port=None):
         self.chain = chain
         self.source_ip = source_ip
         self._validate()
-        self.rule = "-A %s -s %s -j ACCEPT\n" % (chain, self.source_ip)
+        dport = ""
+        if dest_port:
+            dport = "-p tcp --dport %d" % dest_port
+        self.rule = "-A %s -s %s %s -j ACCEPT\n" % (chain, self.source_ip, dport)
 
     def __str__(self):
         return self.rule
