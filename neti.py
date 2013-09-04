@@ -47,28 +47,17 @@ VPCID_PATH = "network/interfaces/macs/%s/vpc-id"
 class Connection(object):
 
     def __init__(self, dry_run=False):
-        self.ec2_zk_hosts = config.get("ec2", "zk_hosts")
-        self.vpc_zk_hosts = config.get("vpc", "zk_hosts")
+        self.zk_hosts = config.get("neti", "zk_hosts")
         self.aws_access_key_id = config.get("neti", "aws_key")
         self.aws_secret_access_key = config.get("neti", "aws_secret_key")
-        self.ec2_overlay_subnet = config.get("ec2", "overlay_subnet")
-        self.vpc_overlay_subnet = config.get("vpc", "overlay_subnet")
-
-        if self._is_vpc:
-            self.local_zk = KazooClient(hosts=self.vpc_zk_hosts)
-            self.remote_zk = KazooClient(hosts=self.ec2_zk_hosts)
-            self.network = IPv4Network(unicode(self.vpc_overlay_subnet))
-        else:
-            self.local_zk = KazooClient(hosts=self.ec2_zk_hosts)
-            self.remote_zk = KazooClient(hosts=self.vpc_zk_hosts)
-            self.network = IPv4Network(unicode(self.ec2_overlay_subnet))
-
+        self.overlay_subnet = config.get("neti", "overlay_subnet")
+        self.zk = KazooClient(hosts=self.zk_hosts)
+        self.network = IPv4Network(unicode(self.overlay_subnet))
         self.instance_id = self._get_instance_id()
         self.public_ip = self._get_public_ip()
         self.private_ip = self._get_private_ip()
 
-        self.local_zk.start()
-        self.remote_zk.start()
+        self.zk.start()
 
     @property
     def _is_vpc(self):
@@ -128,7 +117,7 @@ class Registry(object):
         :returns: String containing chosen IP.
         """
         try:
-            used_ips = {IPv4Address(unicode(ip)) for ip in self.conn.local_zk.get_children(self.zk_iptoid_path)}
+            used_ips = {IPv4Address(unicode(ip)) for ip in self.conn.zk.get_children(self.zk_iptoid_path)}
         except NoNodeError:
             used_ips = set()
         available_ips = set(self.conn.network.hosts()) - used_ips
@@ -148,22 +137,22 @@ class Registry(object):
         while retries < MAX_IP_TRIES:
             retries += 1
             try:
-                self.conn.local_zk.create(self._zk_id_path, ip)
-                logger.info("Creating %s" % ip)
+                self.conn.zk.create(self._zk_id_path, ip)
+                logger.error("Creating %s" % id)
             except NoNodeError:
-                self.conn.local_zk.ensure_path(self.zk_idtoip_path)
+                self.conn.zk.ensure_path(self.zk_idtoip_path)
                 logger.error("Path %s did not exist...creating and trying again" % self.zk_idtoip_path)
                 continue
             except NodeExistsError:
                 try:
-                    zk_ip, _ = self.conn.local_zk.get(self._zk_id_path)
+                    zk_ip, _ = self.conn.zk.get(self._zk_id_path)
                     logger.error("IP %s already assigned to %s...using that" % (zk_ip, self.conn.instance_id))
                 except NoNodeError:
                     logger.error("No IP found...trying again")
                     continue
                 return zk_ip
             try:
-                zk_ip, _ = self.conn.local_zk.get(self._zk_id_path)
+                zk_ip, _ = self.conn.zk.get(self._zk_id_path)
             except NoNodeError:
                 logger.error("IP %s did not get associated...trying again" % ip)
                 continue
@@ -180,13 +169,13 @@ class Registry(object):
     def _set_ip_to_id_map(self, ip):
         """ Sets the reverse map for IP-based lookups. """
         try:
-            self.conn.local_zk.set(self._zk_ip_path(ip), self.conn.instance_id)
+            self.conn.zk.set(self._zk_ip_path(ip), self.conn.instance_id)
         except NoNodeError:
             logger.info("No IP to ID map node for %s" % ip)
             try:
-                self.conn.local_zk.create(self._zk_ip_path(ip), self.conn.instance_id)
+                self.conn.zk.create(self._zk_ip_path(ip), self.conn.instance_id)
             except NoNodeError:
-                self.conn.local_zk.ensure_path(self._zk_ip_path(ip))
+                self.conn.zk.ensure_path(self._zk_ip_path(ip))
                 self._set_ip_to_id_map(ip)
 
     def register(self):
@@ -194,7 +183,7 @@ class Registry(object):
         is set correctly, set the instance variable, and tag the instance.  If it fails, attempt to get a new one.
         :returns: String containing overlay IP. """
         try:
-            self.overlay_ip, _ = self.conn.local_zk.get(self._zk_id_path)
+            self.overlay_ip, _ = self.conn.zk.get(self._zk_id_path)
         except NoNodeError:
             self.overlay_ip = self._find_available_overlay_ip()
             self._tag_instance()
@@ -208,12 +197,10 @@ class Registry(object):
     def run(self):
         """ Connects to both ZKs, inserts an ephemeral node, and starts a watch for changes. """
         try:
-            self.local_party = ShallowParty(self.conn.local_zk, self.zk_ip_map_path, identifier=self._get_ip_map())
-            self.remote_party = ShallowParty(self.conn.remote_zk, self.zk_ip_map_path, identifier=self._get_ip_map())
-            self.local_party.join()
-            self.remote_party.join()
+            self.party = ShallowParty(self.conn.zk, self.zk_ip_map_path, identifier=self._get_ip_map())
+            self.party.join()
 
-            @self.conn.local_zk.ChildrenWatch(self.zk_ip_map_path)
+            @self.conn.zk.ChildrenWatch(self.zk_ip_map_path)
             def update_iptables(hosts):
                 builder = IPtables(is_vpc=self.conn._is_vpc, dry_run=self.dry_run)
                 builder.build(hosts)
