@@ -43,6 +43,7 @@ PUBLIC_ADDRESS_PATH = "public-ipv4"
 PRIVATE_ADDRESS_PATH = "local-ipv4"
 MAC_PATH = "mac"
 VPCID_PATH = "network/interfaces/macs/%s/vpc-id"
+VPC_PUBLIC_ADDRESS_PATH = "network/interfaces/macs/%s/ipv4-associations/"
 
 class Connection(object):
 
@@ -62,14 +63,6 @@ class Connection(object):
 
         self.zk.start()
 
-    @property
-    def _is_vpc(self):
-        mac = str(requests.get("%s%s" % (METADATA_URL, MAC_PATH)).text)
-        res = requests.get("%s%s" % (METADATA_URL, VPCID_PATH % mac))
-        if res.status_code == 200:
-            return True
-        return False
-
     def _get_metadata(self, path):
         if not path:
             raise "Metadata path cannot be empty!"
@@ -79,11 +72,24 @@ class Connection(object):
         else:
             raise MetadataError("Unable to get %s" % path)
 
+    @property
+    def _is_vpc(self):
+        res = requests.get("%s%s" % (METADATA_URL, VPCID_PATH % self._get_mac()))
+        if res.status_code == 200:
+            return True
+        return False
+    
+    def _get_mac(self):
+        return self._get_metadata(MAC_PATH)
+
     def _get_instance_id(self):
         return self._get_metadata(INSTANCE_ID_PATH)
 
     def _get_public_ip(self):
-        return self._get_metadata(PUBLIC_ADDRESS_PATH)
+        try:
+            return self._get_metadata(PUBLIC_ADDRESS_PATH)
+        except MetadataError:
+            return self._get_metadata(VPC_PUBLIC_ADDRESS_PATH % self._get_mac())
 
     def _get_private_ip(self):
         return self._get_metadata(PRIVATE_ADDRESS_PATH)
