@@ -47,11 +47,14 @@ VPCID_PATH = "network/interfaces/macs/%s/vpc-id"
 class Connection(object):
 
     def __init__(self, dry_run=False):
-        self.zk_hosts = config.get("neti", "zk_hosts")
+        if self._is_vpc:
+            self.zk_hosts = config.get("vpc", "zk_hosts")
+        else:
+            self.zk_hosts = config.get("ec2", "zk_hosts")
+        self.zk = KazooClient(hosts=self.zk_hosts)
         self.aws_access_key_id = config.get("neti", "aws_key")
         self.aws_secret_access_key = config.get("neti", "aws_secret_key")
         self.overlay_subnet = config.get("neti", "overlay_subnet")
-        self.zk = KazooClient(hosts=self.zk_hosts)
         self.network = IPv4Network(unicode(self.overlay_subnet))
         self.instance_id = self._get_instance_id()
         self.public_ip = self._get_public_ip()
@@ -284,6 +287,7 @@ class IPtables(object):
     ssh_whitelist = config.get("neti", "ssh_whitelist").split(",")
     open_80 = config.getboolean("neti", "open_80")
     reject_all = config.getboolean("neti", "reject_all")
+    nat_overrides = config.items("nat_overrides")
 
     def __init__(self, is_vpc=False, dry_run=False):
         self._is_vpc = is_vpc
@@ -349,6 +353,8 @@ class IPtables(object):
         for bundle in bundles:
             nat_ips = bundle.NAT_ips(self._is_vpc)
             temp.write(str(NATRule("OUTPUT", nat_ips["overlay_ip"], nat_ips["dest_ip"])))
+        for nat in self.nat_overrides:
+            temp.write(str(NATRule("OUTPUT", nat[0], nat[1])))
         temp.write("COMMIT\n")
         temp.flush()
 

@@ -131,6 +131,12 @@ class NetiIPtablesTests(NetiTestBase):
         self.build_file()
         self.assertEquals(open_80, "dport 80" in self.tempfile)
 
+    def test_nat_overrides(self):
+        nat_overrides = neti.config.items("nat_overrides")
+        self.build_file()
+        for nat in nat_overrides:
+            self.assertIn(nat[0], self.tempfile)
+
 
 def main():
     unittest.main()
