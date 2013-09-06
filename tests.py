@@ -126,10 +126,11 @@ class NetiIPtablesTests(NetiTestBase):
         self.build_file()
         self.assertEquals(reject_all, "-j DROP" in self.tempfile)
 
-    def test_open_80(self):
-        open_80 = neti.config.getboolean("neti", "open_80")
+    def test_open_ports(self):
+        open_ports = neti.config.get("neti", "open_ports").split(",")
         self.build_file()
-        self.assertEquals(open_80, "dport 80" in self.tempfile)
+        for port in open_ports:
+            self.assertTrue("dport %s" % port in self.tempfile)
 
     def test_nat_overrides(self):
         nat_overrides = neti.config.items("nat_overrides")

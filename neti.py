@@ -285,7 +285,7 @@ class IPtables(object):
 -A INPUT -j ssh_whitelist
 """
     ssh_whitelist = config.get("neti", "ssh_whitelist").split(",")
-    open_80 = config.getboolean("neti", "open_80")
+    open_ports = config.get("neti", "open_ports").split(",")
     reject_all = config.getboolean("neti", "reject_all")
     nat_overrides = config.items("nat_overrides")
 
@@ -335,9 +335,9 @@ class IPtables(object):
     def _gen_rule_file(self, temp, bundles):
         """ Generates rule file for the iptables-restore command. """
         temp.write(self.IPTABLES_BASE)
-        if self.open_80:
-            temp.write("-A INPUT -p tcp --dport 80 -m state --state NEW,ESTABLISHED -j ACCEPT")
-            temp.write("-A OUTPUT -o eth0 -p tcp --sport 80 -m state --state ESTABLISHED -j ACCEPT")
+        for port in self.open_ports:
+            temp.write("-A INPUT -p tcp --dport %s -m state --state NEW,ESTABLISHED -j ACCEPT" % port)
+            temp.write("-A OUTPUT -o eth0 -p tcp --sport %s -m state --state ESTABLISHED -j ACCEPT" % port)
         if self.reject_all:
             temp.write("-A INPUT -p tcp -j DROP")
         for bundle in bundles:
