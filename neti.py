@@ -37,6 +37,7 @@ logger.addHandler(hdlr)
 logger.setLevel(logging.INFO)
 
 MAX_IP_TRIES = 5
+DEFAULT_UPDATE_INTERVAL = 30
 METADATA_URL = "http://169.254.169.254/latest/meta-data/"
 INSTANCE_ID_PATH = "instance-id"
 PUBLIC_ADDRESS_PATH = "public-ipv4"
@@ -74,10 +75,11 @@ class Connection(object):
 
     @property
     def _is_vpc(self):
-        res = requests.get("%s%s" % (METADATA_URL, VPCID_PATH % self._get_mac()))
-        if res.status_code == 200:
+        try:
+            self._get_metadata(VPCID_PATH % self._get_mac())
             return True
-        return False
+        except MetadataError:
+            return False
     
     def _get_mac(self):
         return self._get_metadata(MAC_PATH)
@@ -102,6 +104,7 @@ class Registry(object):
         self.zk_iptoid_path = "%s/%s" % (self.zk_prefix, config.get("neti", "zk_iptoid_node"))
         self.zk_idtoip_path = "%s/%s" % (self.zk_prefix, config.get("neti", "zk_idtoip_node"))
         self.zk_ip_map_path = "%s/%s" % (self.zk_prefix, config.get("neti", "zk_ip_map_node"))
+        self.zk_update_interval_path = "%s/%s" % (self.zk_prefix, config.get("neti", "zk_update_interval_path"))
         self.conn = conn
         self.dry_run = dry_run
 
@@ -203,19 +206,40 @@ class Registry(object):
         """ :returns: Mapping of all IPs for znode """
         return "%s|%s|%s|%d" % (self.conn.public_ip, self.conn.private_ip, self.overlay_ip, self.conn._is_vpc)
 
+    def _ips_from_entries(self, entries):
+        """ Builds array of InstanceIPBundles from found ZK nodes.
+            :returns: List of InstanceIPBundles. """
+        ips = []
+        for entry in entries:
+            ips.append(InstanceIPBundle(entry))
+        return ips
+
     def run(self):
         """ Connects to both ZKs, inserts an ephemeral node, and starts a watch for changes. """
         try:
             self.party = ShallowParty(self.conn.zk, self.zk_ip_map_path, identifier=self._get_ip_map())
             self.party.join()
-
+            
+            self.triggered = False
+            try:
+                interval, _ = self.conn.zk.get(self.zk_update_interval_path) 
+                self.update_interval = int(interval) if interval else DEFAULT_UPDATE_INTERVAL
+            except NoNodeError:
+                self.conn.zk.ensure_path(self.zk_update_interval_path)
+                self.conn.zk.set(self.zk_update_interval_path, DEFAULT_UPDATE_INTERVAL)
+            
             @self.conn.zk.ChildrenWatch(self.zk_ip_map_path)
             def update_iptables(hosts):
-                builder = IPtables(is_vpc=self.conn._is_vpc, dry_run=self.dry_run)
-                builder.build(hosts)
+                self.triggered = True
+                self.hosts = hosts
 
             while True:
-                time.sleep(600)
+                if self.triggered:
+                    bundles = self._ips_from_entries(self.hosts)
+                    builder = IPtables(is_vpc=self.conn._is_vpc, dry_run=self.dry_run)
+                    builder.build(bundles)
+                    self.triggered = False
+                time.sleep(self.update_interval)
 
         except ZookeeperError as e:
             logger.error("ZookeeperError: %s" % e)
@@ -291,7 +315,7 @@ class IPtables(object):
 -A INPUT -j ssh_whitelist
 """
     ssh_whitelist = config.get("neti", "ssh_whitelist").split(",")
-    open_ports = config.get("neti", "open_ports").split(",")
+    open_ports = config.get("neti", "open_ports").strip().split(",")
     reject_all = config.getboolean("neti", "reject_all")
     nat_overrides = config.items("nat_overrides")
 
@@ -342,17 +366,18 @@ class IPtables(object):
         """ Generates rule file for the iptables-restore command. """
         temp.write(self.IPTABLES_BASE)
         for port in self.open_ports:
-            temp.write("-A INPUT -p tcp --dport %s -m state --state NEW,ESTABLISHED -j ACCEPT" % port)
-            temp.write("-A OUTPUT -o eth0 -p tcp --sport %s -m state --state ESTABLISHED -j ACCEPT" % port)
+            if port:
+                temp.write("-A INPUT -p tcp --dport %s -m state --state NEW,ESTABLISHED -j ACCEPT\n" % port)
+                temp.write("-A OUTPUT -o eth0 -p tcp --sport %s -m state --state ESTABLISHED -j ACCEPT\n" % port)
         if self.reject_all:
-            temp.write("-A INPUT -p tcp -j DROP")
+            temp.write("-A INPUT -p tcp -j DROP\n")
         for bundle in bundles:
             temp.write(str(FilterRule("ec2_whitelist", bundle.filter_ip(self._is_vpc))))
         if len(self.ssh_whitelist) > 0:
             for ip in self.ssh_whitelist:
                 temp.write(str(FilterRule("ssh_whitelist", ip, dest_port=22)))
         if self._is_vpc:
-            temp.write(str(FilterRule("ssh_whitelist", "10.0.0.0/8")))
+            temp.write(str(FilterRule("ec2_whitelist", "10.0.0.0/8")))
         temp.write("COMMIT\n")
 
         temp.write("*nat\n")
@@ -364,19 +389,10 @@ class IPtables(object):
         temp.write("COMMIT\n")
         temp.flush()
 
-    def _ips_from_entries(self, entries):
-        """ Builds array of InstanceIPBundles from found ZK nodes.
-            :returns: List of InstanceIPBundles. """
-        ips = []
-        for entry in entries:
-            ips.append(InstanceIPBundle(entry))
-        return ips
-
-    def build(self, entries):
+    def build(self, bundles):
         """ Gets nodes from ZK, builds rule table, and pushes it live. """
         self._check_compatibility()
         logger.info("Generating new iptables rules")
-        bundles = self._ips_from_entries(entries)
         num_entries = len(bundles)
         logger.info("%d party members" % num_entries)
         if num_entries > 0:
