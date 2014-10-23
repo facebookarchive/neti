@@ -28,7 +28,7 @@ def parse_config(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", dest="config_file", default="/etc/neti/neti.conf")
+    parser.add_argument("-c", dest="config_file", default="/etc/neti/neti.yml")
     parser.add_argument("--dry-run", dest="dry_run", action="store_true")
     parser.set_defaults(dry_run=False)
 
