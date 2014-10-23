@@ -1,0 +1,63 @@
+#
+#  Copyright (c) 2014, Facebook, Inc.
+#  All rights reserved.
+#
+#  This source code is licensed under the BSD-style license found in the
+#  LICENSE file in the root directory of this source tree. An additional grant
+#  of patent rights can be found in the PATENTS file in the same directory.
+#
+
+---
+
+# AWS keys for setting instance tags
+aws_key: XXXXXXXXXXXXXXXXXXXXXXX
+aws_secret_key: XXXXXXXXXXXXXXXXXXXXXXXX
+
+# path to Neti log file
+log_file: /tmp/neti.log
+
+# path to Neti table files
+table_files_path: /tmp/neti
+
+# list of open tcp ports
+open_ports: 
+  - 80
+
+# true/false for setting reject all at end of iptables
+reject_all: false
+
+# list of whitelisted ssh addresses
+ssh_whitelist:
+  - XX.XX.XX.XX/18
+
+# prefix of zk paths
+zk_prefix: /testing/neti
+
+# Update interval path
+zk_update_interval_path: interval
+
+# Max change threshold path
+zk_max_change_threshold_path: maxchange
+
+# Zookeeper path that maps virtual IP to Instance ID for locking IPs and used IP lookups
+zk_iptoid_node: ip-to-id
+
+# Zookeeper path that maps Instance ID to virtual IP for persisting IP through disconnection
+zk_idtoip_node: id-to-ip
+
+# Zookeeper path that holds ephemeral znodes containing the public, private, virtual IPs and VPC flag
+zk_ip_map_node: ip-map
+
+# CIDR for usable IPs
+overlay_subnet: 192.168.0.0/18
+
+# Zookeeper hosts
+zk_hosts:
+  ec2: 
+    - localhost:27021
+  vpc:
+    - localhost:27021
+
+# override the NAT if needed
+nat_overrides:
+    192.168.75.1: 10.8.1.1
