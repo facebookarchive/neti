@@ -2,7 +2,7 @@
 Neti firewall sync service for EC2-VPC migration
 
 ## Requirements
-Currently, Neti works on Ubuntu/Debian, but should work on many more platforms with a few tweaks to the package management.  Also, if you don't use AWS, you can just stop reading now...not even sure how you got here. You'll need a set of AWS keys that allows instance metadata modification. You will need to create a Zookeeper cluster, so familiarity with Zookeeper s necessary, but all that is needed is a very basic installation.
+Currently, Neti works on Ubuntu/Debian, but should work on many more platforms with a few tweaks to the package management.  Also, if you don't use AWS, you can just stop reading now...not even sure how you got here. You'll need a set of AWS keys that allows instance metadata modification. You will need to create a Zookeeper cluster, so familiarity with Zookeeper is necessary, but all that is needed is a very basic installation.
 
 ## Building Neti
 Neti is buildable as a pip package.
