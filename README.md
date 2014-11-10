@@ -71,7 +71,7 @@ Use nosetests to run the tests in the tests directory.  They're basic tests, but
 
 
 ## How Neti works
-See the (blog post)[http://instagram-engineering.tumblr.com/post/100758229719/migrating-from-aws-to-aws]
+See the [blog post](http://instagram-engineering.tumblr.com/post/100758229719/migrating-from-aws-to-aws)
 
 See the CONTRIBUTING file for how to help out.
 
