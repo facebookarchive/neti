@@ -1,4 +1,10 @@
 # Neti
+- - -
+
+**_This project is not actively maintained. Proceed at your own risk!_**
+
+- - -  
+
 Neti firewall sync service for EC2-VPC migration
 
 ## Requirements
